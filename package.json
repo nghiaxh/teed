@@ -2,7 +2,9 @@
 	"name": "daily-feed",
 	"version": "0.0.0",
 	"license": "MIT",
-	"bin": "dist/cli.js",
+	"bin": {
+		"df": "dist/cli.js"
+	},
 	"type": "module",
 	"engines": {
 		"node": ">=16"
@@ -16,13 +18,19 @@
 		"dist"
 	],
 	"dependencies": {
-		"ink": "^4.1.0",
+		"@types/react-dom": "19.2.3",
+		"commander": "^14.0.3",
+		"html-entities": "^2.6.0",
+		"ink": "^6.8.0",
 		"meow": "^11.0.0",
-		"react": "^18.2.0"
+		"react": "19.2.6",
+		"react-dom": "19.2.6",
+		"rss-parser": "^3.13.0"
 	},
 	"devDependencies": {
 		"@sindresorhus/tsconfig": "^3.0.1",
-		"@types/react": "^18.0.32",
+		"@types/node": "^25.8.0",
+		"@types/react": "19.2.14",
 		"@vdemedes/prettier-config": "^2.0.1",
 		"ava": "^5.2.0",
 		"chalk": "^5.2.0",
@@ -33,7 +41,7 @@
 		"prettier": "^2.8.7",
 		"ts-node": "^10.9.1",
 		"typescript": "^5.0.3",
-		"xo": "^0.53.1"
+		"xo": "^2.0.2"
 	},
 	"ava": {
 		"extensions": {
