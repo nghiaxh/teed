@@ -1,5 +1,5 @@
 {
-	"name": "daily-feed",
+	"name": "@nghiaxh/daily-feed",
 	"version": "0.0.0",
 	"license": "MIT",
 	"bin": {
@@ -12,7 +12,8 @@
 	"scripts": {
 		"build": "tsc",
 		"dev": "tsc --watch",
-		"test": "prettier --check . && xo && ava"
+		"test": "prettier --check . && xo && ava",
+		"prepublishOnly": "npm run build"
 	},
 	"files": [
 		"dist"
@@ -31,7 +32,7 @@
 	},
 	"devDependencies": {
 		"@sindresorhus/tsconfig": "^3.0.1",
-		"@types/node": "^25.8.0",
+		"@types/node": "^25.9.1",
 		"@types/react": "19.2.14",
 		"@types/stopword": "^2.0.3",
 		"@vdemedes/prettier-config": "^2.0.1",
@@ -43,7 +44,7 @@
 		"ink-testing-library": "^3.0.0",
 		"prettier": "^2.8.7",
 		"ts-node": "^10.9.1",
-		"typescript": "^5.0.3",
+		"typescript": "^5.9.3",
 		"xo": "^2.0.2"
 	},
 	"ava": {
@@ -62,5 +63,11 @@
 			"react/prop-types": "off"
 		}
 	},
-	"prettier": "@vdemedes/prettier-config"
+	"prettier": "@vdemedes/prettier-config",
+	"keywords": [
+		"rss",
+		"cli",
+		"news",
+		"vietnam"
+	]
 }
