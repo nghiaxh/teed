@@ -6,18 +6,67 @@ import {loadFeeds, addFeed, removeFeed} from './config.js';
 import type {Article} from './feeds/rss.js';
 
 const COMMANDS_LIST = `
-  /list              Xem danh sách feeds
-  /add <url>         Thêm feed mới
-  /remove <url|*>    Xóa feed
-  /exit              Thoát chương trình
-  Ctrl+C             Thoát
+  /list              Xem danh sach feeds
+  /add <url>         Them feed moi
+  /remove <url|*>    Xoa feed
+  /exit              Thoat chuong trinh
 `;
 
-const sanitizeInput = (raw: string): string => {
-	return raw
-		.normalize('NFC')
-		.replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
-		.trim();
+export function relativeTime(dateStr: string): string {
+	if (!dateStr) return '';
+	const date = new Date(dateStr);
+	const now = new Date();
+	const diffMs = now.getTime() - date.getTime();
+	const minutes = Math.floor(diffMs / 60000);
+	if (minutes < 1) return 'Vua xong';
+	if (minutes < 60) return `${minutes} phut`;
+	const hours = Math.floor(minutes / 60);
+	if (hours < 24) return `${hours} gio`;
+	const days = Math.floor(hours / 24);
+	if (days < 30) return `${days} ngay`;
+	return date.toLocaleDateString('vi-VN');
+}
+
+export function truncate(str: string, maxLen: number): string {
+	if (!str || maxLen <= 0) return '';
+	if (str.length <= maxLen) return str;
+	return str.slice(0, maxLen - 1) + '\u2026';
+}
+
+const ArticleRow = ({
+	article,
+	index,
+	width,
+}: {
+	article: Article;
+	index: number;
+	width: number;
+}) => {
+	const titleMax = Math.max(width - 6, 20);
+	const linkMax = Math.max(width - 4, 20);
+
+	return (
+		<Box flexDirection="column" marginY={0}>
+			<Box>
+				<Text bold color="yellow">
+					{'  '}[{index + 1}]
+				</Text>
+				<Text bold wrap="truncate">
+					{' '}
+					{truncate(article.title, titleMax)}
+				</Text>
+			</Box>
+			<Text dimColor>
+				{'    '}
+				{article.source}
+				{article.date ? ` · ${relativeTime(article.date)}` : ''}
+			</Text>
+			<Text color="cyan" wrap="truncate">
+				{'    '}
+				{truncate(article.link, linkMax)}
+			</Text>
+		</Box>
+	);
 };
 
 const App = () => {
@@ -30,16 +79,14 @@ const App = () => {
 	const [searched, setSearched] = useState(false);
 
 	const {stdout} = useStdout();
+	const columns = stdout?.columns ?? 80;
 	const rows = stdout?.rows ?? 24;
-	const inputHeight = 3;
-	const contentMaxHeight = rows - inputHeight;
+	const contentMaxHeight = rows - 2;
 
 	const handleSubmit = useCallback(
 		async (value: string) => {
-			const trimmed = sanitizeInput(value);
-			if (!trimmed) return;
-
-			if (trimmed === '/') {
+			const trimmed = value.trim();
+			if (!trimmed) {
 				setInput('');
 				return;
 			}
@@ -54,6 +101,8 @@ const App = () => {
 
 				if (cmd === 'exit') {
 					process.exit(0);
+				} else if (cmd === 'help') {
+					setMessage(COMMANDS_LIST);
 				} else if (cmd === 'list') {
 					const maxShow = 20;
 					const shown = feeds.slice(0, maxShow);
@@ -61,29 +110,31 @@ const App = () => {
 						.map((f, i) => `${i + 1}. ${f}`)
 						.join('\n')}`;
 					if (feeds.length > maxShow) {
-						msg += `\n... và ${feeds.length - maxShow} feed khác.`;
+						msg += `\n... va ${feeds.length - maxShow} feed khac.`;
 					}
+
 					setMessage(msg);
 				} else if (cmd === 'add' && parts[1]) {
 					const newFeeds = addFeed(parts[1]);
 					setFeeds(newFeeds);
-					setMessage(`Đã thêm: ${parts[1]}`);
+					setMessage(`Da them: ${parts[1]}`);
 				} else if (cmd === 'remove') {
 					const target = parts[1];
 					if (!target) {
-						setMessage('Cần URL hoặc * để xóa tất cả.');
+						setMessage('Can URL hoac * de xoa tat ca.');
 					} else {
 						const newFeeds = removeFeed(target);
 						setFeeds(newFeeds);
 						setMessage(
 							target === '*'
-								? 'Đã xóa tất cả feed tùy chỉnh.'
-								: `Đã xóa: ${target}`,
+								? 'Da xoa tat ca feed tuy chinh.'
+								: `Da xoa: ${target}`,
 						);
 					}
 				} else {
-					setMessage('Lệnh không hợp lệ.');
+					setMessage('Lenh khong hop le.');
 				}
+
 				setInput('');
 				return;
 			}
@@ -97,7 +148,9 @@ const App = () => {
 				const result = await aggregateNews(trimmed, 5, feeds);
 				setArticles(result);
 			} catch (e) {
-				setError(e instanceof Error ? e.message : 'Lỗi không xác định');
+				setError(
+					e instanceof Error ? e.message : 'Loi khong xac dinh',
+				);
 			} finally {
 				setLoading(false);
 				setInput('');
@@ -106,7 +159,7 @@ const App = () => {
 		[feeds],
 	);
 
-	const showHelp = input.startsWith('/');
+	const showCommands = input.startsWith('/');
 
 	return (
 		<Box height={rows} flexDirection="column">
@@ -116,54 +169,51 @@ const App = () => {
 				overflow="hidden"
 				flexDirection="column"
 			>
-				{showHelp && (
+				{showCommands && (
 					<Box flexDirection="column">
 						<Text>{COMMANDS_LIST}</Text>
 					</Box>
 				)}
 
-				{!showHelp && message && (
+				{!showCommands && message && (
 					<Box flexDirection="column">
 						<Text>{message}</Text>
 					</Box>
 				)}
 
-				{!showHelp &&
+				{!showCommands &&
 					searched &&
 					!loading &&
 					articles.length === 0 &&
-					!error && <Text>Không tìm thấy bài nào.</Text>}
+					!error && <Text>Khong tim thay bai nao.</Text>}
 
-				{!showHelp &&
+				{!showCommands &&
 					articles.length > 0 &&
 					articles.map((a, i) => (
-						<Box key={a.link || String(i)} flexDirection="column" marginY={0.5}>
-							<Text bold>
-								[{i + 1}] {a.title}
-							</Text>
-							<Text dimColor>
-								{a.source} - {a.date || 'Không rõ ngày'}
-							</Text>
-							<Text>{a.snippet}</Text>
-							<Text color="cyan">{a.link}</Text>
-						</Box>
+						<ArticleRow
+							key={a.link || String(i)}
+							article={a}
+							index={i}
+							width={columns}
+						/>
 					))}
 
-				{!showHelp && loading && (
+				{!showCommands && loading && (
 					<Text color="yellow" bold>
-						Đang tìm kiếm...
+						Dang tim kiem...
 					</Text>
 				)}
 
-				{!showHelp && error && <Text color="red">{error}</Text>}
+				{!showCommands && error && (
+					<Box flexDirection="column">
+						<Text color="red">{error}</Text>
+						<Text dimColor> Thu lai bang tu khoa khac.</Text>
+					</Box>
+				)}
 			</Box>
 
-			<Box
-				borderStyle="round"
-				borderColor="white"
-				paddingX={0.5}
-				flexShrink={0}
-			>
+			<Box flexShrink={0} marginLeft={1}>
+				<Text bold>{'>'}</Text>
 				<TextInput value={input} onChange={setInput} onSubmit={handleSubmit} />
 			</Box>
 		</Box>
