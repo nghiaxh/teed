@@ -1,9 +1,10 @@
 import Parser from 'rss-parser';
 import {decode} from 'html-entities';
 import removeAccents from 'remove-accents';
-import { removeStopwords, vie } from 'stopword';
+import {removeStopwords, vie} from 'stopword';
 
 const parser = new Parser({timeout: 8000});
+const CONCURRENCY = 5;
 
 export interface Article {
 	title: string;
@@ -108,23 +109,154 @@ export function extractKeywords(keyword: string): string[] {
 	return meaningfulTokens;
 }
 
+async function concurrentFetch<T>(
+	items: string[],
+	fn: (item: string) => Promise<T[]>,
+	concurrency: number,
+): Promise<T[]> {
+	const results: T[] = [];
+	let index = 0;
+
+	async function worker(): Promise<void> {
+		while (index < items.length) {
+			const i = index++;
+			try {
+				const item = items[i]!;
+				const value = await fn(item);
+				results.push(...value);
+			} catch (error) {
+				if (process.env['DEBUG']) {
+					console.error(`[concurrentFetch] Error at index ${i}:`, error);
+				}
+			}
+		}
+	}
+
+	await Promise.all(
+		Array.from({length: Math.min(concurrency, items.length)}, () => worker()),
+	);
+
+	return results;
+}
+
+async function fetchOneFeed(url: string, kw: string): Promise<Article[]> {
+	const maxRetries = 1;
+
+	for (let attempt = 0; attempt <= maxRetries; attempt++) {
+		try {
+			const feed = await parser.parseURL(url);
+			const kwNoTone = removeVietnameseTones(kw.trim());
+
+			const articles = (feed.items ?? [])
+				.filter(item => {
+					if (!kw.trim()) return true;
+					const titleNoTone = removeVietnameseTones(item.title ?? '');
+					const snippetNoTone = removeVietnameseTones(
+						item.contentSnippet ?? item.summary ?? '',
+					);
+					return (
+						titleNoTone.includes(kwNoTone) ||
+						snippetNoTone.includes(kwNoTone)
+					);
+				})
+				.map(item => ({
+					title: cleanText(item.title ?? '(Không có tiêu đề)'),
+					link: item.link ?? '',
+					snippet: cleanText(
+						(item.contentSnippet ?? item.summary ?? '').slice(0, 250),
+					),
+					source: feed.title ?? new URL(url).hostname,
+					date: item.pubDate ?? item.isoDate ?? '',
+				}));
+
+			if (process.env['DEBUG']) {
+				console.error(`[DEBUG] ${url} -> ${articles.length} articles`);
+			}
+
+			return articles;
+		} catch (e) {
+			if (attempt < maxRetries) {
+				await new Promise(r => setTimeout(r, 1000));
+				continue;
+			}
+
+			console.error(
+				`Lỗi khi fetch feed ${url}:`,
+				e instanceof Error ? e.message : e,
+			);
+			return [];
+		}
+	}
+
+	return [];
+}
+
+async function fetchOneFeedByWords(
+	url: string,
+	keywords: string[],
+): Promise<Article[]> {
+	const maxRetries = 1;
+
+	for (let attempt = 0; attempt <= maxRetries; attempt++) {
+		try {
+			const feed = await parser.parseURL(url);
+			const kwNoTones = keywords
+				.map(k => removeVietnameseTones(k))
+				.filter(Boolean);
+
+			if (kwNoTones.length === 0) return [];
+
+			const articles = (feed.items ?? [])
+				.filter(item => {
+					const titleNoTone = removeVietnameseTones(item.title ?? '');
+					const snippetNoTone = removeVietnameseTones(
+						item.contentSnippet ?? item.summary ?? '',
+					);
+					return kwNoTones.some(
+						kw =>
+							titleNoTone.includes(kw) || snippetNoTone.includes(kw),
+					);
+				})
+				.map(item => ({
+					title: cleanText(item.title ?? '(Không có tiêu đề)'),
+					link: item.link ?? '',
+					snippet: cleanText(
+						(item.contentSnippet ?? item.summary ?? '').slice(0, 250),
+					),
+					source: feed.title ?? new URL(url).hostname,
+					date: item.pubDate ?? item.isoDate ?? '',
+				}));
+
+			if (process.env['DEBUG']) {
+				console.error(
+					`[DEBUG] ${url} -> ${articles.length} articles (by words)`,
+				);
+			}
+
+			return articles;
+		} catch (e) {
+			if (attempt < maxRetries) {
+				await new Promise(r => setTimeout(r, 1000));
+				continue;
+			}
+
+			console.error(
+				`Lỗi khi fetch feed ${url}:`,
+				e instanceof Error ? e.message : e,
+			);
+			return [];
+		}
+	}
+
+	return [];
+}
+
 export async function fetchRSSFeeds(
 	keyword: string,
 	customFeeds?: string[],
 ): Promise<Article[]> {
 	const feeds = customFeeds?.length ? customFeeds : DEFAULT_RSS_FEEDS;
-	const results = await Promise.allSettled(
-		feeds.map(url => fetchOneFeed(url, keyword)),
-	);
-
-	return results.flatMap(r => {
-		if (r.status === 'rejected') {
-			if (process.env['DEBUG'])
-				console.error('[fetchRSSFeeds] Promise rejected:', r.reason);
-			return [];
-		}
-		return r.value;
-	});
+	return concurrentFetch(feeds, url => fetchOneFeed(url, keyword), CONCURRENCY);
 }
 
 export async function fetchRSSFeedsByWords(
@@ -132,100 +264,9 @@ export async function fetchRSSFeedsByWords(
 	customFeeds?: string[],
 ): Promise<Article[]> {
 	const feeds = customFeeds?.length ? customFeeds : DEFAULT_RSS_FEEDS;
-	const results = await Promise.allSettled(
-		feeds.map(url => fetchOneFeedByWords(url, keywords)),
+	return concurrentFetch(
+		feeds,
+		url => fetchOneFeedByWords(url, keywords),
+		CONCURRENCY,
 	);
-
-	return results.flatMap(r => {
-		if (r.status === 'rejected') {
-			if (process.env['DEBUG'])
-				console.error('[fetchRSSFeedsByWords] Promise rejected:', r.reason);
-			return [];
-		}
-		return r.value;
-	});
-}
-
-async function fetchOneFeed(url: string, kw: string): Promise<Article[]> {
-	try {
-		const feed = await parser.parseURL(url);
-		const kwNoTone = removeVietnameseTones(kw.trim());
-
-		const articles = (feed.items ?? [])
-			.filter(item => {
-				if (!kw.trim()) return true;
-				const titleNoTone = removeVietnameseTones(item.title ?? '');
-				const snippetNoTone = removeVietnameseTones(
-					item.contentSnippet ?? item.summary ?? '',
-				);
-				return (
-					titleNoTone.includes(kwNoTone) || snippetNoTone.includes(kwNoTone)
-				);
-			})
-			.map(item => ({
-				title: cleanText(item.title ?? '(Không có tiêu đề)'),
-				link: item.link ?? '',
-				snippet: cleanText(
-					(item.contentSnippet ?? item.summary ?? '').slice(0, 250),
-				),
-				source: feed.title ?? new URL(url).hostname,
-				date: item.pubDate ?? item.isoDate ?? '',
-			}));
-
-		if (process.env['DEBUG']) {
-			console.error(`[DEBUG] ${url} -> ${articles.length} articles`);
-		}
-		return articles;
-	} catch (e) {
-		console.error(
-			`Lỗi khi fetch feed ${url}:`,
-			e instanceof Error ? e.message : e,
-		);
-		return [];
-	}
-}
-
-async function fetchOneFeedByWords(
-	url: string,
-	keywords: string[],
-): Promise<Article[]> {
-	try {
-		const feed = await parser.parseURL(url);
-		const kwNoTones = keywords
-			.map(k => removeVietnameseTones(k))
-			.filter(Boolean);
-
-		if (kwNoTones.length === 0) return [];
-
-		const articles = (feed.items ?? [])
-			.filter(item => {
-				const titleNoTone = removeVietnameseTones(item.title ?? '');
-				const snippetNoTone = removeVietnameseTones(
-					item.contentSnippet ?? item.summary ?? '',
-				);
-				return kwNoTones.some(
-					kw => titleNoTone.includes(kw) || snippetNoTone.includes(kw),
-				);
-			})
-			.map(item => ({
-				title: cleanText(item.title ?? '(Không có tiêu đề)'),
-				link: item.link ?? '',
-				snippet: cleanText(
-					(item.contentSnippet ?? item.summary ?? '').slice(0, 250),
-				),
-				source: feed.title ?? new URL(url).hostname,
-				date: item.pubDate ?? item.isoDate ?? '',
-			}));
-
-		if (process.env['DEBUG']) {
-			console.error(`[DEBUG] ${url} -> ${articles.length} articles (by words)`);
-		}
-		return articles;
-	} catch (e) {
-		console.error(
-			`Lỗi khi fetch feed ${url}:`,
-			e instanceof Error ? e.message : e,
-		);
-		return [];
-	}
 }
