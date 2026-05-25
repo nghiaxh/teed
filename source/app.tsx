@@ -1,3 +1,4 @@
+import {exec} from 'node:child_process';
 import React, {useState, useCallback, useEffect} from 'react';
 import {Text, Box, useStdout, useInput} from 'ink';
 import TextInput from 'ink-text-input';
@@ -10,7 +11,6 @@ import {
 	saveSettings,
 } from './config.js';
 import type {Article} from './feeds/rss.js';
-import {exec} from 'node:child_process';
 
 const COMMANDS_LIST = `
   /list              List all feeds
@@ -23,7 +23,7 @@ const COMMANDS_LIST = `
 const SPINNER_CHARS = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
 function openUrl(url: string): void {
-	const quoted = url.replace(/"/g, '\\"');
+	const quoted = url.replace(/"/g, String.raw`\"`);
 	if (process.platform === 'win32') {
 		exec(`start "" "${quoted}"`);
 	} else if (process.platform === 'darwin') {
@@ -165,7 +165,9 @@ const App = () => {
 			setSpinnerFrame(i => (i + 1) % SPINNER_CHARS.length);
 		}, 80);
 
-		return () => clearInterval(timer);
+		return () => {
+			clearInterval(timer);
+		};
 	}, [loading]);
 
 	useInput((char, key) => {
@@ -191,7 +193,7 @@ const App = () => {
 			return;
 		}
 
-		if (!articles.length || input.trim()) {
+		if (articles.length === 0 || input.trim()) {
 			return;
 		}
 
