@@ -29,6 +29,30 @@ export function addFeed(url: string): string[] {
 	return feeds;
 }
 
+const SETTINGS_PATH = join(homedir(), '.teed_settings.json');
+
+export interface Settings {
+	limit: number;
+}
+
+const DEFAULT_SETTINGS: Settings = {
+	limit: 5,
+};
+
+export function loadSettings(): Settings {
+	if (!existsSync(SETTINGS_PATH)) return DEFAULT_SETTINGS;
+	try {
+		const data = readFileSync(SETTINGS_PATH, 'utf8');
+		return {...DEFAULT_SETTINGS, ...JSON.parse(data)};
+	} catch {
+		return DEFAULT_SETTINGS;
+	}
+}
+
+export function saveSettings(settings: Settings): void {
+	writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2), 'utf8');
+}
+
 export function removeFeed(target: string): string[] {
 	if (target === '*') {
 		if (existsSync(CONFIG_PATH)) unlinkSync(CONFIG_PATH);
