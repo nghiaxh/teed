@@ -38,13 +38,28 @@ Start the app, type a keyword, and press **Enter** to search for news.
 
 ### Commands
 
-| Command            | Description                        |
-| ------------------ | ---------------------------------- |
-| `/list`            | List all available RSS feeds       |
-| `/add <url>`       | Add a new RSS feed                 |
-| `/remove <url\|*>` | Remove a feed, or use `*` to reset |
-| `/exit`            | Exit the program                   |
-| `Ctrl+C`           | Quick exit                         |
+| Command            | Description                             |
+| ------------------ | --------------------------------------- |
+| `/list`            | Browse all RSS feeds (scrollable list)  |
+| `/add <url>`       | Add a new RSS feed                      |
+| `/remove <url\|*>` | Remove a feed, or use `*` to reset      |
+| `/setfeed <5-10>`  | Set max articles per search (default 5) |
+| `/q`               | Quit the program                        |
+| `Ctrl+C`           | Quick exit                              |
+
+### Keyboard navigation
+
+When search results are displayed:
+
+- **↑/↓** — Navigate through articles
+- **Enter** — View article details
+- **Esc/Enter** — Close detail view
+- **o** — Open article link in browser
+
+When browsing feed list (`/list`):
+
+- **↑/↓** — Navigate through feeds
+- **Esc** — Back to search
 
 ## Feed management
 
